@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Healthcare Symptom Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.0.12/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .prose h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        .prose h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 1.25em;
+            margin-bottom: 0.5em;
+        }
+        .prose ul {
+            list-style-type: disc;
+            padding-left: 1.5em;
+            margin-bottom: 1em;
+        }
+        .prose li {
+            margin-bottom: 0.5em;
+        }
+        .prose p {
+             margin-bottom: 1em;
+        }
+        .prose strong {
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-lg w-full max-w-2xl mx-4 my-8">
+        
+        <div class="text-center mb-6">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Healthcare Symptom Checker</h1>
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg mb-6" role="alert">
+            <p class="font-bold">Important Disclaimer</p>
+            <p class="text-sm">This tool is for informational and educational purposes only and does not provide medical advice. It is not a substitute for professional medical consultation, diagnosis, or treatment. Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition.</p>
+        </div>
+
+        <!-- Input Form -->
+        <div>
+            <label for="symptoms" class="block text-sm font-medium text-gray-700 mb-2">Please describe your symptoms (e.g., "I have a headache, fever, and a sore throat"):</label>
+            <textarea id="symptoms" name="symptoms" rows="5" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow" placeholder="Enter your symptoms here..."></textarea>
+            <button id="check-btn" class="mt-4 w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105 active:scale-100">
+                Check Symptoms
+            </button>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-container" class="mt-8 hidden">
+             <h2 class="text-xl sm:text-2xl font-bold text-gray-800 border-b pb-2 mb-4">Analysis Results</h2>
+            <div id="loader" class="flex items-center justify-center space-x-2">
+                <div class="w-4 h-4 rounded-full bg-blue-600 animate-pulse"></div>
+                <div class="w-4 h-4 rounded-full bg-blue-600 animate-pulse [animation-delay:0.2s]"></div>
+                <div class="w-4 h-4 rounded-full bg-blue-600 animate-pulse [animation-delay:0.4s]"></div>
+                <p class="text-gray-600">Analyzing your symptoms...</p>
+            </div>
+            <div id="output" class="text-gray-700 prose max-w-none"></div>
+        </div>
+
+    </div>
+
+    <script>
+        const checkBtn = document.getElementById('check-btn');
+        const symptomsInput = document.getElementById('symptoms');
+        const resultsContainer = document.getElementById('results-container');
+        const loader = document.getElementById('loader');
+        const output = document.getElementById('output');
+
+        checkBtn.addEventListener('click', async () => {
+            const symptoms = symptomsInput.value.trim();
+            if (!symptoms) {
+                alert('Please enter your symptoms before checking.');
+                return;
+            }
+
+            resultsContainer.classList.remove('hidden');
+            loader.style.display = 'flex';
+            output.innerHTML = '';
+            checkBtn.disabled = true;
+
+            const systemPrompt = `You are an AI medical information assistant. Your purpose is to provide potential conditions and next steps based on user-provided symptoms for educational purposes ONLY.
+            
+            **CRITICAL RULES:**
+            1.  **MANDATORY DISCLAIMER:** Start EVERY response with the following disclaimer, exactly as written, enclosed in a markdown blockquote: "> **Disclaimer:** This is for informational purposes only and does not constitute medical advice. Please consult a healthcare professional for an accurate diagnosis and treatment plan."
+            2.  **DO NOT PROVIDE A DIAGNOSIS:** Never state that the user "has" or "is likely to have" a specific condition. Use phrases like "Possible conditions could include:", "Some possibilities might be:", or "Symptoms like these are sometimes associated with:".
+            3.  **STRUCTURE THE RESPONSE:** Organize the output clearly with the following sections using markdown headings:
+                - ### Possible Conditions
+                - ### Recommended Next Steps
+                - ### General Wellness Tips (If applicable)
+            4.  **NEXT STEPS MUST BE SAFE:** Always recommend consulting a healthcare professional as the primary next step. You can also suggest general at-home care like rest and hydration, but professional consultation is key. For any potentially serious symptoms (e.g., chest pain, difficulty breathing, severe headache), your primary recommendation must be to seek immediate medical attention.
+            5.  **BE CONCISE AND CLEAR:** Use simple, easy-to-understand language. Avoid overly technical jargon. Use lists to make information scannable.
+            6.  **Maintain a caring and helpful, yet professional and cautious tone.`;
+            
+            const userQuery = `Based on these symptoms, suggest possible conditions and next steps with the mandatory educational disclaimer. Symptoms: "${symptoms}"`;
+            
+            try {
+                const result = await generateContentWithRetry(systemPrompt, userQuery);
+                const candidate = result.candidates?.[0];
+
+                if (candidate && candidate.content?.parts?.[0]?.text) {
+                    // Use marked.js to convert Markdown to HTML
+                    output.innerHTML = marked.parse(candidate.content.parts[0].text);
+                } else {
+                    output.textContent = 'Sorry, the analysis could not be completed. The response from the model was empty. Please try again.';
+                }
+            } catch (error) {
+                console.error('API Call Error:', error);
+                output.textContent = 'An error occurred while analyzing your symptoms. Please check your connection and try again later.';
+            } finally {
+                loader.style.display = 'none';
+                checkBtn.disabled = false;
+            }
+        });
+
+        async function generateContentWithRetry(systemPrompt, userQuery, maxRetries = 3) {
+            const apiKey = ""; // API key is handled by the environment
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+            };
+
+            let lastError = null;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`Attempt ${i + 1} failed. Retrying in ${Math.pow(2, i)} seconds...`);
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+            throw new Error(`API call failed after ${maxRetries} attempts: ${lastError.message}`);
+        }
+
+    </script>
+</body>
+</html>
